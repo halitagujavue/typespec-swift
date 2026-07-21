@@ -42,6 +42,29 @@ describe("unions fixture", () => {
   }, 120_000);
 });
 
+describe("basic-crud fixture", () => {
+  it("emits a Client.swift with CRUD operations and builds", async () => {
+    const outputDir = await compileFixture("basic-crud");
+    const client = readFileSync(join(outputDir, "BasicCrudServiceClient.swift"), "utf8");
+    expect(client).toContain("public struct BasicCrudServiceClient: Sendable {");
+    expect(client).toContain(
+      "public func getItem(itemId: String, include: String? = nil, ifNoneMatch: String? = nil) async throws -> Item {"
+    );
+    expect(client).toContain('builder.addQuery("include", include)');
+    expect(client).toContain('builder.setHeader("if-none-match", ifNoneMatch)');
+    expect(client).toContain("try response.checkStatus(errorTypes: [404: NotFoundError.self])");
+    expect(client).toContain(
+      "public func createItem(payload: ItemInput) async throws -> Item {"
+    );
+    expect(client).toContain("try response.checkStatus(errorTypes: [422: ValidationError.self])");
+    expect(client).toContain(
+      "public func deleteItem(itemId: String) async throws {"
+    );
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+});
+
 describe("maps-arrays fixture", () => {
   it("maps Array<T>, Record<string,V>, and optional properties, and builds", async () => {
     const outputDir = await compileFixture("maps-arrays");

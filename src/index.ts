@@ -1,9 +1,11 @@
 import { createTypeSpecLibrary, type EmitContext, type JSONSchemaType } from "@typespec/compiler";
 import { createAssetEmitter } from "@typespec/asset-emitter";
-import { mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { getAllHttpServices } from "@typespec/http";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { copyRuntime } from "./runtime.ts";
 import { SwiftTypeEmitter } from "./type-emitter.ts";
+import { generateClient } from "./http-emitter.ts";
 
 export interface SwiftEmitterOptions {
   outputDir?: string;
@@ -57,7 +59,12 @@ export async function runEmit(context: EmitContext<SwiftEmitterOptions>): Promis
   assetEmitter.emitProgram();
   await assetEmitter.writeOutput();
 
-  // HTTP client generation is wired in a later task.
+  const [services] = getAllHttpServices(context.program);
+  if (services.length > 0) {
+    const { filename, content } = generateClient(context.program, services[0], options);
+    writeFileSync(join(options.outputDir, filename), content);
+  }
+
   if (options.generateRuntime) {
     copyRuntime(options.outputDir);
   }
