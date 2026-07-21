@@ -11,7 +11,38 @@ Build a general-purpose TypeSpec emitter that generates idiomatic, zero-dependen
 
 ---
 
-## 2. Package structure
+## 2. Dependencies
+
+Pinned to the versions proven in the spike (`grdsdev/spike-swift-supabase-code-generation`). `TypeEmitter` / `AssetEmitter` live in `@typespec/asset-emitter`, a separate package from `@typespec/compiler` — this was missing from earlier drafts of this spec and must be declared explicitly.
+
+`package.json` (`typespec-swift`), runtime dependencies:
+
+```json
+{
+  "dependencies": {
+    "@typespec/compiler": "1.13.0",
+    "@typespec/http": "1.13.0",
+    "@typespec/asset-emitter": "1.13.0"
+  }
+}
+```
+
+`devDependencies` (needed only to compile the `.tsp` test fixtures, which reference these libraries):
+
+```json
+{
+  "devDependencies": {
+    "@typespec/rest": "0.83.0",
+    "@typespec/sse": "0.83.0",
+    "@typespec/events": "0.83.0",
+    "@typespec/streams": "0.83.0"
+  }
+}
+```
+
+All TypeSpec package versions are pinned exactly (no `^`/`~` ranges) to avoid drift between the emitter's compiled-against API surface and its tested behavior.
+
+## 3. Package structure
 
 ```
 http-client-swift/
@@ -34,11 +65,11 @@ http-client-swift/
 
 ---
 
-## 3. Emitter integration
+## 4. Emitter integration
 
 The package exports `$onEmit` as a TypeSpec plugin and also ships a CLI bin.
 
-### 3.1 TypeSpec plugin (`tsp compile`)
+### 4.1 TypeSpec plugin (`tsp compile`)
 
 Users add the emitter to `tspconfig.yaml`:
 
@@ -54,7 +85,7 @@ options:
 
 Invoked automatically by `tsp compile`.
 
-### 3.2 CLI
+### 4.2 CLI
 
 ```
 npx typespec-swift <specDir> <outputDir> [--access-modifier internal] [--no-runtime]
@@ -62,7 +93,7 @@ npx typespec-swift <specDir> <outputDir> [--access-modifier internal] [--no-runt
 
 The CLI calls `@typespec/compiler`'s `compile()` itself, then routes the compiled `Program` into the same emit path as the plugin.
 
-### 3.3 Data flow
+### 4.3 Data flow
 
 ```
 tsp compile               CLI
@@ -89,11 +120,11 @@ $onEmit(EmitContext)    compile(specDir)
 
 ---
 
-## 4. Type emission — `SwiftTypeEmitter`
+## 5. Type emission — `SwiftTypeEmitter`
 
 `SwiftTypeEmitter extends TypeEmitter<string, SwiftEmitterOptions>`. The output unit per type is a Swift declaration string. `AssetEmitter` aggregates all declarations into `Models.swift` and handles deduplication.
 
-### 4.1 TypeSpec → Swift type mapping
+### 5.1 TypeSpec → Swift type mapping
 
 | TypeSpec | Swift | Notes |
 |---|---|---|
@@ -110,7 +141,7 @@ $onEmit(EmitContext)    compile(specDir)
 | `unknown` / `Record<unknown>` | `JSONValue` | free-form JSON via HTTPRuntime |
 | Optional property `prop?: T` | `var prop: T?` | |
 
-### 4.2 `TypeEmitter` dispatch methods
+### 5.2 `TypeEmitter` dispatch methods
 
 - **`modelDeclaration`** — emits `struct` body + memberwise init. Skips `@statusCode` and `@header` properties (handled by the HTTP emitter). Detects `@error` decorator to add `APIError` conformance. Reserved Swift keyword members (e.g. `protocol`, `class`, `self`, `default`) are backtick-escaped in declarations and use dual-label form in the init (`\`protocol\` protocolValue: String?`).
 - **`enumDeclaration`** — emits `String`-raw-value enum. Normalises `SCREAMING_SNAKE` case names to `lowerCamelCase`.
@@ -120,11 +151,11 @@ $onEmit(EmitContext)    compile(specDir)
 
 ---
 
-## 5. HTTP client generation — `http-emitter.ts`
+## 6. HTTP client generation — `http-emitter.ts`
 
 A separate pass over `HttpOperation[]` from `getAllHttpServices(program)`. Produces `<ServiceName>Client.swift`. Does not use `TypeEmitter`.
 
-### 5.1 Generated client shape
+### 6.1 Generated client shape
 
 ```swift
 public struct <ServiceName>Client: Sendable {
@@ -137,7 +168,7 @@ public struct <ServiceName>Client: Sendable {
 }
 ```
 
-### 5.2 Parameter binding → Swift
+### 6.2 Parameter binding → Swift
 
 | `@typespec/http` binding | Swift emission |
 |---|---|
@@ -150,7 +181,7 @@ public struct <ServiceName>Client: Sendable {
 | JSON body (optional) | `if let payload { builder.setHeader(...); builder.setBody(...) }` |
 | `bytes` / streaming body | `body: HTTPBody` param + `builder.setBody(body)` |
 
-### 5.3 Response kind → return type
+### 6.3 Response kind → return type
 
 | Response | Return type | Transport call |
 |---|---|---|
@@ -159,11 +190,11 @@ public struct <ServiceName>Client: Sendable {
 | Streaming bytes | `-> HTTPResponseStream` | `transport.stream(builder.build())` + `ensureSuccess` |
 | SSE event stream | `-> AsyncThrowingStream<EventUnion, Error>` | `transport.stream` → `.serverSentEvents()` → decode each frame |
 
-### 5.4 SSE event union recovery
+### 6.4 SSE event union recovery
 
 `@typespec/http` flattens `SSEStream<EventUnion>` to a `string` body. The emitter recovers the typed union by inspecting the operation's raw TypeSpec return type's template arguments — not from HTTP metadata. This is the same technique proven in the spike's `findEventUnion`.
 
-### 5.5 Error table
+### 6.5 Error table
 
 ```swift
 try response.checkStatus(errorTypes: [404: NotFoundError.self, 422: ValidationError.self])
@@ -171,13 +202,13 @@ try response.checkStatus(errorTypes: [404: NotFoundError.self, 422: ValidationEr
 
 Built from each operation's `errors` array (`@typespec/http` `HttpOperationResponse` entries with non-2xx status codes).
 
-### 5.6 Streaming upload progress
+### 6.6 Streaming upload progress
 
 When request body kind is `bytes`, the operation receives an additional `uploadProgress: ProgressHandler? = nil` parameter and calls `transport.send(builder.build(), uploadProgress: uploadProgress)`.
 
 ---
 
-## 6. Runtime asset bundling — `runtime.ts`
+## 7. Runtime asset bundling — `runtime.ts`
 
 `copyRuntime(outputDir: string)` copies the 12 HTTPRuntime Swift source files from the emitter package's `runtime/` directory into `<outputDir>/Runtime/`. Called from both the plugin and CLI paths. Controlled by the `generateRuntime` option (default `true`).
 
@@ -207,7 +238,7 @@ The user's `Package.swift` declares:
 
 ---
 
-## 7. Emitter options
+## 8. Emitter options
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -217,9 +248,9 @@ The user's `Package.swift` declares:
 
 ---
 
-## 8. Testing
+## 9. Testing
 
-### 8.1 Strategy
+### 9.1 Strategy
 
 Vitest end-to-end tests. Each test:
 1. Compiles a `.tsp` fixture via the emitter
@@ -227,7 +258,7 @@ Vitest end-to-end tests. Each test:
 3. Spawns `swift build` on that directory
 4. Asserts exit code 0
 
-### 8.2 Test layout
+### 9.2 Test layout
 
 ```
 test/
@@ -243,7 +274,7 @@ test/
 └── emitter.test.ts        # one describe block per fixture
 ```
 
-### 8.3 Temp dir scaffold (`swift-build.ts`)
+### 9.3 Temp dir scaffold (`swift-build.ts`)
 
 ```
 <tmpDir>/
@@ -270,7 +301,7 @@ let package = Package(
 )
 ```
 
-### 8.4 Edge-case fixture coverage
+### 9.4 Edge-case fixture coverage
 
 | Fixture | Edge cases covered |
 |---|---|
@@ -281,13 +312,13 @@ let package = Package(
 | `maps-arrays.tsp` | `Array<T>` · `Record<string, V>` · optional properties · enums as query params |
 | `greedy-path.tsp` | Greedy path params (`{path+}`) · multipart upload |
 
-### 8.5 CI requirements
+### 9.5 CI requirements
 
 Tests require both Node.js (≥22) and the Swift toolchain. CI runs on `macos-latest`. `package.json` documents the Swift version requirement.
 
 ---
 
-## 9. Out of scope (this iteration)
+## 10. Out of scope (this iteration)
 
 - Authentication / interceptors
 - Pagination helpers
