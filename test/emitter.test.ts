@@ -27,3 +27,17 @@ describe("basic-models fixture", () => {
     expect(stdout).toBeDefined();
   }, 120_000);
 });
+
+describe("unions fixture", () => {
+  it("emits enum, indirect union, and @error conformance, and builds", async () => {
+    const outputDir = await compileFixture("unions");
+    const models = readFileSync(join(outputDir, "Models.swift"), "utf8");
+    expect(models).toContain("public enum ItemStatus: String, Codable, Sendable, Hashable, CaseIterable {");
+    expect(models).toContain('case active = "active"');
+    expect(models).toContain("public indirect enum Content: Codable, Sendable, Hashable {");
+    expect(models).toContain("case nested(Item)");
+    expect(models).toContain("public struct NotFoundError: Codable, Sendable, Hashable, APIError {");
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+});
