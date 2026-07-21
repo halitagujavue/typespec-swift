@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { compileFixture } from "./helpers/compile-fixture.ts";
 import { buildGeneratedSwift } from "./helpers/swift-build.ts";
@@ -37,6 +37,33 @@ describe("unions fixture", () => {
     expect(models).toContain("public indirect enum Content: Codable, Sendable, Hashable {");
     expect(models).toContain("case nested(Item)");
     expect(models).toContain("public struct NotFoundError: Codable, Sendable, Hashable, APIError {");
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+});
+
+describe("maps-arrays fixture", () => {
+  it("maps Array<T>, Record<string,V>, and optional properties, and builds", async () => {
+    const outputDir = await compileFixture("maps-arrays");
+    const models = readFileSync(join(outputDir, "Models.swift"), "utf8");
+    expect(models).toContain("public var tags: [String]?");
+    expect(models).toContain("public var metadata: [String: String]?");
+    expect(models).toContain("public var children: [Item]?");
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+});
+
+describe("keywords fixture", () => {
+  it("escapes reserved Swift keyword members and uses dual-name init params, and builds", async () => {
+    const outputDir = await compileFixture("keywords");
+    const models = readFileSync(join(outputDir, "Models.swift"), "utf8");
+    expect(models).toContain("public var `protocol`: String?");
+    expect(models).toContain("public var `class`: String?");
+    expect(models).toContain("public var `self`: String?");
+    expect(models).toContain("public var `default`: Bool?");
+    expect(models).toContain("`protocol` protocolValue: String? = nil");
+    expect(models).toContain("self.`protocol` = protocolValue");
     const { stdout } = buildGeneratedSwift(outputDir);
     expect(stdout).toBeDefined();
   }, 120_000);
