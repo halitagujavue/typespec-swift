@@ -1,7 +1,9 @@
 import { createTypeSpecLibrary, type EmitContext, type JSONSchemaType } from "@typespec/compiler";
+import { createAssetEmitter } from "@typespec/asset-emitter";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { copyRuntime } from "./runtime.ts";
+import { SwiftTypeEmitter } from "./type-emitter.ts";
 
 export interface SwiftEmitterOptions {
   outputDir?: string;
@@ -48,8 +50,14 @@ export function resolveOptions(context: EmitContext<SwiftEmitterOptions>): Resol
 export async function runEmit(context: EmitContext<SwiftEmitterOptions>): Promise<void> {
   const options = resolveOptions(context);
   mkdirSync(options.outputDir, { recursive: true });
-  // Model/enum/union/client generation are wired in later tasks; this
-  // skeleton only proves the runtime-copy plumbing end-to-end.
+  const assetEmitter = createAssetEmitter(context.program, SwiftTypeEmitter, {
+    ...context,
+    options,
+  } as any);
+  assetEmitter.emitProgram();
+  await assetEmitter.writeOutput();
+
+  // HTTP client generation is wired in a later task.
   if (options.generateRuntime) {
     copyRuntime(options.outputDir);
   }
