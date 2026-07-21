@@ -1,0 +1,4 @@
+node_modules/
+tsp-output/
+*.tsbuildinfo
+.DS_Store

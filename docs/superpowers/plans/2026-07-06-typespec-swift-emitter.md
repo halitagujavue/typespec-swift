@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - No external Swift package dependencies in generated code — only the vendored `HTTPRuntime` target (spec §1).
-- `package.json` dependencies pinned exactly: `@typespec/compiler` 1.13.0, `@typespec/http` 1.13.0, `@typespec/asset-emitter` 1.13.0 (spec §2).
+- `package.json` dependencies pinned exactly: `@typespec/compiler` 1.13.0, `@typespec/http` 1.13.0, `@typespec/asset-emitter` 0.79.1 (spec §2). `@typespec/asset-emitter` uses its own pre-1.0 version line (peer dep `@typespec/compiler ^1.10.0`, satisfied by 1.13.0).
 - `devDependencies` pinned exactly: `@typespec/rest` 0.83.0, `@typespec/sse` 0.83.0, `@typespec/events` 0.83.0, `@typespec/streams` 0.83.0 (spec §2).
 - All generated declarations default to `public` visibility; `accessModifier` option (`"public" | "internal"`) controls this globally (spec §8).
 - `outputDir` defaults to `{project-root}/tsp-output/swift`; `generateRuntime` defaults to `true` (spec §8).
@@ -62,7 +62,7 @@
   "dependencies": {
     "@typespec/compiler": "1.13.0",
     "@typespec/http": "1.13.0",
-    "@typespec/asset-emitter": "1.13.0"
+    "@typespec/asset-emitter": "0.79.1"
   },
   "devDependencies": {
     "@typespec/rest": "0.83.0",

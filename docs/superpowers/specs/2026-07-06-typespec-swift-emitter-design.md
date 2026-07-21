@@ -13,7 +13,7 @@ Build a general-purpose TypeSpec emitter that generates idiomatic, zero-dependen
 
 ## 2. Dependencies
 
-Pinned to the versions proven in the spike (`grdsdev/spike-swift-supabase-code-generation`). `TypeEmitter` / `AssetEmitter` live in `@typespec/asset-emitter`, a separate package from `@typespec/compiler` — this was missing from earlier drafts of this spec and must be declared explicitly.
+Pinned to the versions proven in the spike (`grdsdev/spike-swift-supabase-code-generation`). `TypeEmitter` / `AssetEmitter` live in `@typespec/asset-emitter`, a separate package from `@typespec/compiler` — this was missing from earlier drafts of this spec and must be declared explicitly. `@typespec/asset-emitter` follows its own (pre-1.0) version line and does not track `@typespec/compiler`'s version number — `0.79.1` is its latest release and declares a peer dependency on `@typespec/compiler ^1.10.0`, which is satisfied by the pinned `1.13.0`.
 
 `package.json` (`typespec-swift`), runtime dependencies:
 
@@ -22,7 +22,7 @@ Pinned to the versions proven in the spike (`grdsdev/spike-swift-supabase-code-g
   "dependencies": {
     "@typespec/compiler": "1.13.0",
     "@typespec/http": "1.13.0",
-    "@typespec/asset-emitter": "1.13.0"
+    "@typespec/asset-emitter": "0.79.1"
   }
 }
 ```
