@@ -1,7 +1,18 @@
 {
   "name": "typespec-swift",
   "version": "0.1.0",
-  "private": true,
+  "description": "Experimental TypeSpec emitter that generates idiomatic, zero-dependency Swift HTTP clients.",
+  "keywords": ["typespec", "swift", "emitter", "codegen", "http-client"],
+  "license": "MIT",
+  "author": "Guilherme Souza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grdsdev/typespec-swift.git"
+  },
+  "homepage": "https://github.com/grdsdev/typespec-swift#readme",
+  "bugs": {
+    "url": "https://github.com/grdsdev/typespec-swift/issues"
+  },
   "type": "module",
   "bin": {
     "typespec-swift": "./src/cli.ts"
