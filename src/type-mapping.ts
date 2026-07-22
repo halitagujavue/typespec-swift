@@ -1,6 +1,6 @@
 // Maps TypeSpec built-in scalar names to Swift primitive type names.
 const SCALAR_MAP: Record<string, string> = {
-  string: "String", uuid: "String", url: "String",
+  string: "String", uuid: "UUID", url: "URL",
   boolean: "Bool",
   bytes: "Data",
   int8: "Int32", int16: "Int32", int32: "Int32", uint8: "Int32", uint16: "Int32", uint32: "Int32",

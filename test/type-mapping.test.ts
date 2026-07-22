@@ -44,6 +44,18 @@ describe("swiftTypeForType", () => {
     expect(swiftOf("h")).toBe("Date");
   });
 
+  it("maps uuid to UUID and url to URL", async () => {
+    // `uuid` is not a built-in TypeSpec scalar (only `url` is) — declare a
+    // custom scalar to exercise the name-based mapping in resolveScalarChain.
+    const program = await compileSnippet(`
+      scalar uuid extends string;
+      model M { a: uuid; b: url; }
+    `);
+    const m = findModel(program, "M");
+    expect(swiftTypeForType(m.properties.get("a").type, program)).toBe("UUID");
+    expect(swiftTypeForType(m.properties.get("b").type, program)).toBe("URL");
+  });
+
   it("maps Array<T> and Record<string, V>", async () => {
     const program = await compileSnippet(`
       model M { tags: string[]; meta: Record<string>; }
