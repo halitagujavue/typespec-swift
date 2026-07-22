@@ -1,11 +1,8 @@
+import { getDoc } from "@typespec/compiler";
 import { escapeIdentifier, lowerFirst } from "./naming.ts";
 import { swiftTypeForType } from "./type-mapping.ts";
+import { docComment, paramDocLines, type DocParam } from "./doc-comment.ts";
 import type { ResolvedSwiftEmitterOptions } from "./index.ts";
-
-function docComment(doc: string | undefined, indent = ""): string {
-  if (!doc) return "";
-  return doc.split("\n").map((l) => `${indent}/// ${l}`).join("\n") + "\n";
-}
 
 interface ParamInfo {
   name: string;
@@ -14,6 +11,9 @@ interface ParamInfo {
   required: boolean;
   greedy?: boolean;
   isEnum?: boolean;
+  /** The TypeSpec node (`ModelProperty`) this parameter was derived from,
+   * used to read its own `@doc` for `- Parameter` lines. */
+  docNode?: any;
 }
 
 function pathExpr(uri: string, labels: ParamInfo[]): string {
@@ -75,6 +75,7 @@ function emitOperation(program: any, httpOp: any, modifier: string): string {
       required: !p.param.optional,
       greedy: !!p.allowReserved,
       isEnum: p.param.type?.kind === "Enum",
+      docNode: p.param,
     };
     if (p.type === "path") labels.push(info);
     else if (p.type === "query") queries.push(info);
@@ -96,6 +97,7 @@ function emitOperation(program: any, httpOp: any, modifier: string): string {
         wireName: "",
         swiftType: swiftTypeForType(bt, program),
         required: !(reqBody.property?.optional ?? false),
+        docNode: reqBody.property,
       };
     }
   }
@@ -152,7 +154,18 @@ function emitOperation(program: any, httpOp: any, modifier: string): string {
     ? "[" + errors.map((e) => `${e.status}: ${e.shape}.self`).join(", ") + "]"
     : "[:]";
 
-  let out = docComment(undefined, "    ");
+  const docParams: DocParam[] = [];
+  for (const p of [...labels, ...queries, ...headers]) {
+    if (p.docNode) docParams.push({ label: escapeIdentifier(p.name), docNode: p.docNode });
+  }
+  if (requestBodyKind === "json" && payload?.docNode) {
+    docParams.push({ label: escapeIdentifier(payload.name), docNode: payload.docNode });
+  } else if (requestBodyKind === "streamingBlob" && reqBody?.property) {
+    docParams.push({ label: "body", docNode: reqBody.property });
+  }
+
+  let out = docComment(getDoc(program, httpOp.operation), "    ");
+  out += paramDocLines(program, docParams, "    ");
   out += `    ${modifier} func ${opName}(${params.join(", ")}) async throws${returnType} {\n`;
   out += `        ${mutatesBuilder ? "var" : "let"} builder = HTTPRequestBuilder(method: .${method}, baseURL: baseURL, path: ${pathExpr(httpOp.path, labels)})\n`;
   for (const q of queries) {

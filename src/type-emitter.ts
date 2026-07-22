@@ -1,8 +1,9 @@
 import { CodeTypeEmitter } from "@typespec/asset-emitter";
-import { isErrorModel } from "@typespec/compiler";
+import { getDoc, isErrorModel } from "@typespec/compiler";
 import { isHeader, isStatusCode } from "@typespec/http";
 import { enumCaseName, escapeIdentifier, internalParamName, isSwiftKeyword } from "./naming.ts";
 import { swiftTypeForType } from "./type-mapping.ts";
+import { docComment } from "./doc-comment.ts";
 import type { ResolvedSwiftEmitterOptions } from "./index.ts";
 
 export class SwiftTypeEmitter extends CodeTypeEmitter<ResolvedSwiftEmitterOptions> {
@@ -39,9 +40,11 @@ export class SwiftTypeEmitter extends CodeTypeEmitter<ResolvedSwiftEmitterOption
       ? "Codable, Sendable, Hashable, APIError"
       : "Codable, Sendable, Hashable";
 
-    let out = `${modifier} struct ${name}: ${protocols} {\n`;
+    let out = docComment(getDoc(program, model));
+    out += `${modifier} struct ${name}: ${protocols} {\n`;
     for (const prop of bodyMembers) {
       const type = swiftTypeForType(prop.type, program) + (prop.optional ? "?" : "");
+      out += docComment(getDoc(program, prop), "    ");
       out += `    ${modifier} var ${escapeIdentifier(prop.name)}: ${type}\n`;
     }
 
@@ -78,16 +81,21 @@ export class SwiftTypeEmitter extends CodeTypeEmitter<ResolvedSwiftEmitterOption
   }
 
   enumDeclaration(en: any, name: string) {
+    const program = this.emitter.getProgram();
     const modifier = this.#modifier();
     const style = this.emitter.getOptions().enumStyle;
     const members = [...en.members.values()].map((member: any) => ({
       caseName: escapeIdentifier(enumCaseName(String(member.name))),
       rawValue: JSON.stringify(String(member.value ?? member.name)),
+      doc: getDoc(program, member),
     }));
+    const enumDoc = docComment(getDoc(program, en));
 
     if (style === "enum") {
-      let out = `${modifier} enum ${name}: String, Codable, Sendable, Hashable, CaseIterable {\n`;
+      let out = enumDoc;
+      out += `${modifier} enum ${name}: String, Codable, Sendable, Hashable, CaseIterable {\n`;
       for (const m of members) {
+        out += docComment(m.doc, "    ");
         out += `    case ${m.caseName} = ${m.rawValue}\n`;
       }
       out += `}\n`;
@@ -97,12 +105,14 @@ export class SwiftTypeEmitter extends CodeTypeEmitter<ResolvedSwiftEmitterOption
     // "openStruct" (default): a RawRepresentable struct with one static
     // member per case. Forward-compatible — decoding an unrecognized wire
     // value produces a valid instance instead of throwing.
-    let out = `${modifier} struct ${name}: RawRepresentable, Codable, Sendable, Hashable {\n`;
+    let out = enumDoc;
+    out += `${modifier} struct ${name}: RawRepresentable, Codable, Sendable, Hashable {\n`;
     out += `    ${modifier} let rawValue: String\n\n`;
     out += `    ${modifier} init(rawValue: String) {\n`;
     out += `        self.rawValue = rawValue\n`;
     out += `    }\n\n`;
     for (const m of members) {
+      out += docComment(m.doc, "    ");
       out += `    ${modifier} static let ${m.caseName} = ${name}(rawValue: ${m.rawValue})\n`;
     }
     out += `}\n`;
@@ -116,9 +126,11 @@ export class SwiftTypeEmitter extends CodeTypeEmitter<ResolvedSwiftEmitterOption
     const needsIndirect = variants.some((v: any) => v.type.kind === "Model" || v.type.kind === "Union");
     const kw = needsIndirect ? "indirect enum" : "enum";
 
-    let out = `${modifier} ${kw} ${name}: Codable, Sendable, Hashable {\n`;
+    let out = docComment(getDoc(program, union));
+    out += `${modifier} ${kw} ${name}: Codable, Sendable, Hashable {\n`;
     for (const v of variants) {
       const caseName = escapeIdentifier(String(v.name));
+      out += docComment(getDoc(program, v), "    ");
       out += `    case ${caseName}(${swiftTypeForType(v.type, program)})\n`;
     }
 

@@ -164,6 +164,46 @@ describe("maps-arrays fixture", () => {
   }, 120_000);
 });
 
+describe("doc-comments fixture", () => {
+  it("emits /// doc comments for models, properties, enums, enum members, unions, union variants, operations, and parameters, and builds", async () => {
+    const outputDir = await compileFixture("doc-comments");
+    const models = readFileSync(join(outputDir, "Models.swift"), "utf8");
+    const client = readFileSync(join(outputDir, "DocCommentsServiceClient.swift"), "utf8");
+
+    // Model + property.
+    expect(models).toContain("/// An item in the catalog.\npublic struct Item");
+    expect(models).toContain("    /// The item's unique identifier.\n    public var id: String");
+
+    // Enum (openStruct default) + member.
+    expect(models).toContain("/// The lifecycle status of an item.\npublic struct ItemStatus");
+    expect(models).toContain(
+      '    /// The item is active and visible.\n    public static let active = ItemStatus(rawValue: "Active")'
+    );
+
+    // Union + variant.
+    expect(models).toContain("/// A polymorphic content block.\npublic indirect enum Content");
+    expect(models).toContain("    /// Plain text content.\n    case text(String)");
+
+    // Operation + parameter.
+    expect(client).toContain("    /// Fetches an item by its identifier.\n");
+    expect(client).toContain("    /// - Parameter itemId: The item's unique identifier.\n");
+    expect(client).toContain("public func getItem(itemId: String) async throws -> Item {");
+
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+
+  it("emits doc comments on cases when enumStyle is 'enum'", async () => {
+    const outputDir = await compileFixture("doc-comments", { enumStyle: "enum" });
+    const models = readFileSync(join(outputDir, "Models.swift"), "utf8");
+    expect(models).toContain(
+      '    /// The item is active and visible.\n    case active = "Active"'
+    );
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+});
+
 describe("keywords fixture", () => {
   it("escapes reserved Swift keyword members and uses dual-name init params, and builds", async () => {
     const outputDir = await compileFixture("keywords");
