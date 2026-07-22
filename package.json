@@ -13,17 +13,19 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate:fixtures": "node test/generate-fixture-outputs.ts"
   },
   "dependencies": {
+    "@typespec/asset-emitter": "0.79.1",
     "@typespec/compiler": "1.13.0",
-    "@typespec/http": "1.13.0",
-    "@typespec/asset-emitter": "0.79.1"
+    "@typespec/http": "1.13.0"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@typespec/events": "0.83.0",
     "@typespec/rest": "0.83.0",
     "@typespec/sse": "0.83.0",
-    "@typespec/events": "0.83.0",
     "@typespec/streams": "0.83.0",
     "vitest": "^3.0.0"
   }

@@ -4,3 +4,4 @@ tsp-output/
 .DS_Store
 test/.tmp-*
 docs/superpowers/
+test/fixtures/*/generated/
