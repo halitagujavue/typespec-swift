@@ -89,6 +89,27 @@ describe("streaming fixture", () => {
   }, 120_000);
 });
 
+describe("accessModifier option", () => {
+  it("emits internal declarations end-to-end when accessModifier is 'internal'", async () => {
+    const outputDir = await compileFixture("basic-crud", { accessModifier: "internal" });
+    const models = readFileSync(join(outputDir, "Models.swift"), "utf8");
+    const client = readFileSync(join(outputDir, "BasicCrudServiceClient.swift"), "utf8");
+    expect(models).toContain("internal struct Item: Codable, Sendable, Hashable {");
+    expect(models).not.toContain("public struct Item");
+    expect(client).toContain("internal struct BasicCrudServiceClient: Sendable {");
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+});
+
+describe("generateRuntime option", () => {
+  it("skips vendoring the runtime when generateRuntime is false", async () => {
+    const outputDir = await compileFixture("basic-models", { generateRuntime: false });
+    expect(existsSync(join(outputDir, "Runtime"))).toBe(false);
+    expect(existsSync(join(outputDir, "Models.swift"))).toBe(true);
+  });
+});
+
 describe("greedy-path fixture", () => {
   it("emits PathEncoding.greedy for {path+} segments and builds", async () => {
     const outputDir = await compileFixture("greedy-path");
