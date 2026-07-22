@@ -5,3 +5,4 @@ tsp-output/
 test/.tmp-*
 docs/superpowers/
 test/fixtures/*/generated/
+dist/

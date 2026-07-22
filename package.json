@@ -2,7 +2,13 @@
   "name": "typespec-swift",
   "version": "0.1.0",
   "description": "Experimental TypeSpec emitter that generates idiomatic, zero-dependency Swift HTTP clients.",
-  "keywords": ["typespec", "swift", "emitter", "codegen", "http-client"],
+  "keywords": [
+    "typespec",
+    "swift",
+    "emitter",
+    "codegen",
+    "http-client"
+  ],
   "license": "MIT",
   "author": "Guilherme Souza",
   "repository": {
@@ -14,18 +20,26 @@
     "url": "https://github.com/grdsdev/typespec-swift/issues"
   },
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
-    "typespec-swift": "./src/cli.ts"
+    "typespec-swift": "./dist/cli.js"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
+  "files": ["dist", "runtime", "README.md", "LICENSE"],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "test": "vitest run",
-    "generate:fixtures": "node test/generate-fixture-outputs.ts"
+    "generate:fixtures": "node test/generate-fixture-outputs.ts",
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@typespec/asset-emitter": "0.79.1",
@@ -38,6 +52,7 @@
     "@typespec/rest": "0.83.0",
     "@typespec/sse": "0.83.0",
     "@typespec/streams": "0.83.0",
+    "typescript": "^7.0.2",
     "vitest": "^3.0.0"
   }
 }
