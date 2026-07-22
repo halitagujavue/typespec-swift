@@ -10,7 +10,7 @@ import Foundation
 /// - Buffered and streaming requests use the modern async `URLSession` APIs
 ///   (`upload(for:fromFile:)`, `bytes(for:)`), which keep the code fully
 ///   async/await + `AsyncSequence` and Sendable-clean.
-/// - Uploads stream from a file on disk (`.file`/`.multipart`), so large bodies
+/// - Uploads stream from a file on disk (`.file`), so large bodies
 ///   never fully buffer in memory. Progress is reported via a per-task delegate.
 /// - Background sessions are exposed via `init(configuration:)`, BUT the async
 ///   convenience APIs are not supported on a background `URLSessionConfiguration`
@@ -38,7 +38,7 @@ public struct URLSessionTransport: HTTPTransport {
         let response: URLResponse
         do {
             switch request.body {
-            case .none:
+            case nil:
                 (data, response) = try await session.data(for: urlRequest, delegate: delegate)
             case .data(let payload):
                 (data, response) = try await session.upload(
@@ -46,13 +46,6 @@ public struct URLSessionTransport: HTTPTransport {
             case .file(let fileURL):
                 (data, response) = try await session.upload(
                     for: urlRequest, fromFile: fileURL, delegate: delegate)
-            case .multipart(let form):
-                let fileURL = try form.writeToTemporaryFile()
-                defer { try? FileManager.default.removeItem(at: fileURL) }
-                var withBoundary = urlRequest
-                withBoundary.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
-                (data, response) = try await session.upload(
-                    for: withBoundary, fromFile: fileURL, delegate: delegate)
             }
         } catch {
             throw HTTPError.transport(error)

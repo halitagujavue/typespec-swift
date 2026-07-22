@@ -3,14 +3,16 @@ import Foundation
 /// The body of an outgoing request.
 ///
 /// `.file` is the key to streaming large uploads without loading them into
-/// memory: `URLSession` streams the file from disk. `.multipart` assembles a
-/// `multipart/form-data` body onto a temporary file and then uploads that file,
-/// so even large multipart parts never materialize fully in memory.
+/// memory: `URLSession` streams the file from disk. A missing body is
+/// represented by `nil` rather than a dedicated case. Multipart bodies are
+/// built by generated client code using `MultipartFormData`, which is then
+/// converted to either `.data` (small, in-memory bodies) or `.file` (large
+/// bodies, streamed from a temporary file the generated code cleans up)
+/// before being handed to the transport — the transport itself never sees a
+/// `MultipartFormData` value.
 public enum HTTPBody: Sendable {
-    case none
     case data(Data)
     case file(URL)
-    case multipart(MultipartFormData)
 }
 
 /// A fully-resolved HTTP request: absolute URL, headers, and body.
@@ -18,13 +20,13 @@ public struct HTTPRequest: Sendable {
     public var method: HTTPMethod
     public var url: URL
     public var headers: [String: String]
-    public var body: HTTPBody
+    public var body: HTTPBody?
 
     public init(
         method: HTTPMethod,
         url: URL,
         headers: [String: String] = [:],
-        body: HTTPBody = .none
+        body: HTTPBody? = nil
     ) {
         self.method = method
         self.url = url
@@ -45,7 +47,7 @@ public struct HTTPRequestBuilder: Sendable {
     private let path: String
     private var queryItems: [URLQueryItem] = []
     private var headers: [String: String] = [:]
-    private var body: HTTPBody = .none
+    private var body: HTTPBody? = nil
 
     public init(method: HTTPMethod, baseURL: URL, path: String) {
         self.method = method
