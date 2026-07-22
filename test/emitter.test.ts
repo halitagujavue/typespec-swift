@@ -65,6 +65,30 @@ describe("basic-crud fixture", () => {
   }, 120_000);
 });
 
+describe("streaming fixture", () => {
+  it("emits streaming upload/download and SSE operations, and builds", async () => {
+    const outputDir = await compileFixture("streaming");
+    const client = readFileSync(join(outputDir, "StreamingServiceClient.swift"), "utf8");
+    expect(client).toContain(
+      "public func uploadFile(bucket: String, contentType: String? = nil, body: HTTPBody, uploadProgress: ProgressHandler? = nil) async throws -> UploadResult {"
+    );
+    expect(client).toContain("builder.setBody(body)");
+    expect(client).toContain(
+      "try await transport.send(builder.build(), uploadProgress: uploadProgress)"
+    );
+    expect(client).toContain(
+      "public func downloadFile(bucket: String) async throws -> HTTPResponseStream {"
+    );
+    expect(client).toContain("let stream = try await transport.stream(builder.build())");
+    expect(client).toContain(
+      "public func invokeFunction(name: String) async throws -> AsyncThrowingStream<FunctionEvent, any Error> {"
+    );
+    expect(client).toContain("stream.body.serverSentEvents()");
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+});
+
 describe("maps-arrays fixture", () => {
   it("maps Array<T>, Record<string,V>, and optional properties, and builds", async () => {
     const outputDir = await compileFixture("maps-arrays");

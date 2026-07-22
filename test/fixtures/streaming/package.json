@@ -1,0 +1,10 @@
+{
+  "name": "fixture-streaming",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@typespec/sse": "0.83.0",
+    "@typespec/events": "0.83.0",
+    "@typespec/streams": "0.83.0"
+  }
+}

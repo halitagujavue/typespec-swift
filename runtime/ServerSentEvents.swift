@@ -15,8 +15,8 @@ public struct ServerSentEvent: Sendable, Hashable {
     }
 }
 
-extension AsyncThrowingStream where Element == Data, Failure == any Error {
-    /// Parses this stream of raw byte chunks into SSE frames, splitting on the
+extension AsyncThrowingStream where Element == UInt8, Failure == any Error {
+    /// Parses this stream of raw bytes into SSE frames, splitting on the
     /// blank-line frame delimiter and coalescing multi-line `data:` fields per
     /// the SSE spec. Generated code maps each frame's `data` (JSON) into the
     /// operation's typed event union.
@@ -25,8 +25,8 @@ extension AsyncThrowingStream where Element == Data, Failure == any Error {
             let task = Task {
                 var buffer = Data()
                 do {
-                    for try await chunk in self {
-                        buffer.append(chunk)
+                    for try await byte in self {
+                        buffer.append(byte)
                         while let frame = Self.extractFrame(&buffer) {
                             if let event = Self.parseFrame(frame) {
                                 continuation.yield(event)
