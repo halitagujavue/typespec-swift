@@ -11,6 +11,7 @@ export interface SwiftEmitterOptions {
   outputDir?: string;
   accessModifier?: "public" | "internal";
   generateRuntime?: boolean;
+  enumStyle?: "openStruct" | "enum";
 }
 
 const SwiftEmitterOptionsSchema: JSONSchemaType<SwiftEmitterOptions> = {
@@ -20,6 +21,7 @@ const SwiftEmitterOptionsSchema: JSONSchemaType<SwiftEmitterOptions> = {
     outputDir: { type: "string", nullable: true },
     accessModifier: { type: "string", enum: ["public", "internal"], nullable: true },
     generateRuntime: { type: "boolean", nullable: true },
+    enumStyle: { type: "string", enum: ["openStruct", "enum"], nullable: true },
   },
   required: [],
 };
@@ -38,6 +40,7 @@ export interface ResolvedSwiftEmitterOptions {
   outputDir: string;
   accessModifier: "public" | "internal";
   generateRuntime: boolean;
+  enumStyle: "openStruct" | "enum";
 }
 
 export function resolveOptions(context: EmitContext<SwiftEmitterOptions>): ResolvedSwiftEmitterOptions {
@@ -45,6 +48,7 @@ export function resolveOptions(context: EmitContext<SwiftEmitterOptions>): Resol
     outputDir: resolve(context.options.outputDir ?? context.emitterOutputDir),
     accessModifier: context.options.accessModifier ?? "public",
     generateRuntime: context.options.generateRuntime ?? true,
+    enumStyle: context.options.enumStyle ?? "openStruct",
   };
 }
 

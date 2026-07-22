@@ -79,11 +79,31 @@ export class SwiftTypeEmitter extends CodeTypeEmitter<ResolvedSwiftEmitterOption
 
   enumDeclaration(en: any, name: string) {
     const modifier = this.#modifier();
-    let out = `${modifier} enum ${name}: String, Codable, Sendable, Hashable, CaseIterable {\n`;
-    for (const member of en.members.values()) {
-      const caseName = escapeIdentifier(enumCaseName(String(member.name)));
-      const rawValue = JSON.stringify(String(member.value ?? member.name));
-      out += `    case ${caseName} = ${rawValue}\n`;
+    const style = this.emitter.getOptions().enumStyle;
+    const members = [...en.members.values()].map((member: any) => ({
+      caseName: escapeIdentifier(enumCaseName(String(member.name))),
+      rawValue: JSON.stringify(String(member.value ?? member.name)),
+    }));
+
+    if (style === "enum") {
+      let out = `${modifier} enum ${name}: String, Codable, Sendable, Hashable, CaseIterable {\n`;
+      for (const m of members) {
+        out += `    case ${m.caseName} = ${m.rawValue}\n`;
+      }
+      out += `}\n`;
+      return this.emitter.result.declaration(name, out);
+    }
+
+    // "openStruct" (default): a RawRepresentable struct with one static
+    // member per case. Forward-compatible — decoding an unrecognized wire
+    // value produces a valid instance instead of throwing.
+    let out = `${modifier} struct ${name}: RawRepresentable, Codable, Sendable, Hashable {\n`;
+    out += `    ${modifier} let rawValue: String\n\n`;
+    out += `    ${modifier} init(rawValue: String) {\n`;
+    out += `        self.rawValue = rawValue\n`;
+    out += `    }\n\n`;
+    for (const m of members) {
+      out += `    ${modifier} static let ${m.caseName} = ${name}(rawValue: ${m.rawValue})\n`;
     }
     out += `}\n`;
     return this.emitter.result.declaration(name, out);

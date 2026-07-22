@@ -32,11 +32,29 @@ describe("unions fixture", () => {
   it("emits enum, indirect union, and @error conformance, and builds", async () => {
     const outputDir = await compileFixture("unions");
     const models = readFileSync(join(outputDir, "Models.swift"), "utf8");
-    expect(models).toContain("public enum ItemStatus: String, Codable, Sendable, Hashable, CaseIterable {");
-    expect(models).toContain('case active = "active"');
+    expect(models).toContain("public struct ItemStatus: RawRepresentable, Codable, Sendable, Hashable {");
+    expect(models).toContain("public let rawValue: String");
+    expect(models).toContain("public init(rawValue: String) {");
+    expect(models).toContain('public static let active = ItemStatus(rawValue: "active")');
+    expect(models).toContain('public static let archived = ItemStatus(rawValue: "archived")');
+    expect(models).toContain('public static let pending = ItemStatus(rawValue: "pending")');
     expect(models).toContain("public indirect enum Content: Codable, Sendable, Hashable {");
     expect(models).toContain("case nested(Item)");
     expect(models).toContain("public struct NotFoundError: Codable, Sendable, Hashable, APIError {");
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+});
+
+describe("enumStyle option", () => {
+  it("emits a closed Swift enum when enumStyle is 'enum'", async () => {
+    const outputDir = await compileFixture("unions", { enumStyle: "enum" });
+    const models = readFileSync(join(outputDir, "Models.swift"), "utf8");
+    expect(models).toContain("public enum ItemStatus: String, Codable, Sendable, Hashable, CaseIterable {");
+    expect(models).toContain('case active = "active"');
+    expect(models).toContain('case archived = "archived"');
+    expect(models).toContain('case pending = "pending"');
+    expect(models).not.toContain("RawRepresentable");
     const { stdout } = buildGeneratedSwift(outputDir);
     expect(stdout).toBeDefined();
   }, 120_000);
