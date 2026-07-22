@@ -3,3 +3,4 @@ tsp-output/
 *.tsbuildinfo
 .DS_Store
 test/.tmp-*
+docs/superpowers/
