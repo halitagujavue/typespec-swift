@@ -1,5 +1,9 @@
 # typespec-swift
 
+> **⚠️ Experimental — not for production use.** This is an early-stage,
+> actively-changing project. APIs, generated code shape, and CLI flags may
+> change without notice between versions.
+
 A TypeSpec emitter that generates idiomatic, zero-dependency Swift HTTP clients.
 
 ## Requirements
