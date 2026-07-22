@@ -165,7 +165,31 @@ function findEventUnion(op: any): string | undefined {
   return undefined;
 }
 
-function emitOperation(program: any, httpOp: any, modifier: string): string {
+interface OperationInfo {
+  opName: string;
+  labels: ParamInfo[];
+  queries: ParamInfo[];
+  headers: ParamInfo[];
+  requestBodyKind: "json" | "streamingBlob" | "multipart" | "none";
+  payload?: ParamInfo;
+  multipartParts: PartInfo[];
+  multipartHasFilePart: boolean;
+  responseKind: "json" | "empty" | "streamingBlob" | "eventStream";
+  outputSwiftType: string;
+  eventUnion?: string;
+  errorTable: string;
+  method: string;
+  mutatesBuilder: boolean;
+  docParams: DocParam[];
+  doc: string | undefined;
+  returnType: string;
+}
+
+// Computes everything needed to emit either the concrete method
+// (emitOperation) or the protocol requirement (emitProtocolRequirement) for
+// one operation, so both stay perfectly in sync without duplicating the
+// TypeSpec-shape inspection logic.
+function computeOperationInfo(program: any, httpOp: any): OperationInfo {
   const opName = lowerFirst(httpOp.operation.name);
   const labels: ParamInfo[] = [];
   const queries: ParamInfo[] = [];
@@ -241,24 +265,6 @@ function emitOperation(program: any, httpOp: any, modifier: string): string {
     }
   }
 
-  const params: string[] = [];
-  for (const p of [...labels, ...queries, ...headers]) {
-    params.push(`${escapeIdentifier(p.name)}: ${p.swiftType}${p.required ? "" : "?"}${p.required ? "" : " = nil"}`);
-  }
-  if (requestBodyKind === "json" && payload) {
-    params.push(`${escapeIdentifier(payload.name)}: ${payload.swiftType}${payload.required ? "" : "?"}${payload.required ? "" : " = nil"}`);
-  } else if (requestBodyKind === "streamingBlob") {
-    params.push(`body: HTTPBody`);
-    params.push(`uploadProgress: ProgressHandler? = nil`);
-  } else if (requestBodyKind === "multipart") {
-    for (const p of multipartParts) {
-      params.push(`${escapeIdentifier(p.name)}: ${p.swiftType}${p.required ? "" : "?"}${p.required ? "" : " = nil"}`);
-    }
-    if (multipartHasFilePart) {
-      params.push(`uploadProgress: ProgressHandler? = nil`);
-    }
-  }
-
   let returnType = "";
   if (responseKind === "json") returnType = ` -> ${outputSwiftType}`;
   else if (responseKind === "streamingBlob") returnType = ` -> HTTPResponseStream`;
@@ -284,35 +290,95 @@ function emitOperation(program: any, httpOp: any, modifier: string): string {
     }
   }
 
-  let out = docComment(getDoc(program, httpOp.operation), "    ");
-  out += paramDocLines(program, docParams, "    ");
-  out += `    ${modifier} func ${opName}(${params.join(", ")}) async throws${returnType} {\n`;
-  out += `        ${mutatesBuilder ? "var" : "let"} builder = HTTPRequestBuilder(method: .${method}, baseURL: baseURL, path: ${pathExpr(httpOp.path, labels)})\n`;
-  for (const q of queries) {
+  return {
+    opName,
+    labels,
+    queries,
+    headers,
+    requestBodyKind,
+    payload,
+    multipartParts,
+    multipartHasFilePart,
+    responseKind,
+    outputSwiftType,
+    eventUnion,
+    errorTable,
+    method,
+    mutatesBuilder,
+    docParams,
+    doc: getDoc(program, httpOp.operation),
+    returnType,
+  };
+}
+
+function formatParam(name: string, swiftType: string, required: boolean, includeDefault: boolean): string {
+  const optional = required ? "" : "?";
+  const def = !required && includeDefault ? " = nil" : "";
+  return `${escapeIdentifier(name)}: ${swiftType}${optional}${def}`;
+}
+
+// Builds the full parameter list text (without surrounding parens) for an
+// operation. `includeDefaults` is false for protocol requirements (Swift
+// forbids default arguments there) and true for the concrete method.
+function formatParamList(info: OperationInfo, includeDefaults: boolean): string {
+  const params: string[] = [];
+  for (const p of [...info.labels, ...info.queries, ...info.headers]) {
+    params.push(formatParam(p.name, p.swiftType, p.required, includeDefaults));
+  }
+  if (info.requestBodyKind === "json" && info.payload) {
+    params.push(formatParam(info.payload.name, info.payload.swiftType, info.payload.required, includeDefaults));
+  } else if (info.requestBodyKind === "streamingBlob") {
+    params.push(`body: HTTPBody`);
+    params.push(includeDefaults ? `uploadProgress: ProgressHandler? = nil` : `uploadProgress: ProgressHandler?`);
+  } else if (info.requestBodyKind === "multipart") {
+    for (const p of info.multipartParts) {
+      params.push(formatParam(p.name, p.swiftType, p.required, includeDefaults));
+    }
+    if (info.multipartHasFilePart) {
+      params.push(includeDefaults ? `uploadProgress: ProgressHandler? = nil` : `uploadProgress: ProgressHandler?`);
+    }
+  }
+  return params.join(", ");
+}
+
+// Emits the concrete method implementation. `ensureSuccessRef` is `"Self"`
+// for operations on the top-level client, or the outer client's type name
+// (e.g. `"ShopServiceClient"`) for operations on a nested interface
+// sub-client, since a nested struct's own `Self` doesn't resolve to the
+// outer type that declares `ensureSuccess`.
+function emitOperation(program: any, httpOp: any, modifier: string, ensureSuccessRef: string = "Self"): string {
+  const info = computeOperationInfo(program, httpOp);
+  const params = formatParamList(info, true);
+
+  let out = docComment(info.doc, "    ");
+  out += paramDocLines(program, info.docParams, "    ");
+  out += `    ${modifier} func ${info.opName}(${params}) async throws${info.returnType} {\n`;
+  out += `        ${info.mutatesBuilder ? "var" : "let"} builder = HTTPRequestBuilder(method: .${info.method}, baseURL: baseURL, path: ${pathExpr(httpOp.path, info.labels)})\n`;
+  for (const q of info.queries) {
     out += `        builder.addQuery(${JSON.stringify(q.wireName)}, ${stringValueExpr(q)})\n`;
   }
-  for (const h of headers) {
+  for (const h of info.headers) {
     out += `        builder.setHeader(${JSON.stringify(h.wireName)}, ${stringValueExpr(h)})\n`;
   }
-  if (requestBodyKind === "json" && payload) {
-    if (payload.required) {
+  if (info.requestBodyKind === "json" && info.payload) {
+    if (info.payload.required) {
       out += `        builder.setHeader("Content-Type", "application/json")\n`;
-      out += `        builder.setBody(.data(try JSONCoding.encoder.encode(${escapeIdentifier(payload.name)})))\n`;
+      out += `        builder.setBody(.data(try JSONCoding.encoder.encode(${escapeIdentifier(info.payload.name)})))\n`;
     } else {
-      out += `        if let ${escapeIdentifier(payload.name)} {\n`;
+      out += `        if let ${escapeIdentifier(info.payload.name)} {\n`;
       out += `            builder.setHeader("Content-Type", "application/json")\n`;
-      out += `            builder.setBody(.data(try JSONCoding.encoder.encode(${escapeIdentifier(payload.name)})))\n`;
+      out += `            builder.setBody(.data(try JSONCoding.encoder.encode(${escapeIdentifier(info.payload.name)})))\n`;
       out += `        }\n`;
     }
-  } else if (requestBodyKind === "streamingBlob") {
+  } else if (info.requestBodyKind === "streamingBlob") {
     out += `        builder.setBody(body)\n`;
-  } else if (requestBodyKind === "multipart") {
+  } else if (info.requestBodyKind === "multipart") {
     out += `        var multipart = MultipartFormData()\n`;
-    for (const p of multipartParts) {
+    for (const p of info.multipartParts) {
       out += emitPartAppend(p);
     }
     out += `        builder.setHeader("Content-Type", multipart.contentType)\n`;
-    if (multipartHasFilePart) {
+    if (info.multipartHasFilePart) {
       out += `        let multipartFile = try multipart.writeToTemporaryFile()\n`;
       out += `        defer { try? FileManager.default.removeItem(at: multipartFile) }\n`;
       out += `        builder.setBody(.file(multipartFile))\n`;
@@ -322,35 +388,35 @@ function emitOperation(program: any, httpOp: any, modifier: string): string {
   }
 
   const sendsWithProgress =
-    requestBodyKind === "streamingBlob" || (requestBodyKind === "multipart" && multipartHasFilePart);
+    info.requestBodyKind === "streamingBlob" || (info.requestBodyKind === "multipart" && info.multipartHasFilePart);
 
-  if (responseKind === "json") {
+  if (info.responseKind === "json") {
     const send = sendsWithProgress
       ? `try await transport.send(builder.build(), uploadProgress: uploadProgress)`
       : `try await transport.send(builder.build())`;
     out += `        let response = ${send}\n`;
-    out += `        try response.checkStatus(errorTypes: ${errorTable})\n`;
-    out += `        return try JSONCoding.decoder.decode(${outputSwiftType}.self, from: response.body)\n`;
-  } else if (responseKind === "empty") {
+    out += `        try response.checkStatus(errorTypes: ${info.errorTable})\n`;
+    out += `        return try JSONCoding.decoder.decode(${info.outputSwiftType}.self, from: response.body)\n`;
+  } else if (info.responseKind === "empty") {
     const send = sendsWithProgress
       ? `try await transport.send(builder.build(), uploadProgress: uploadProgress)`
       : `try await transport.send(builder.build())`;
     out += `        let response = ${send}\n`;
-    out += `        try response.checkStatus(errorTypes: ${errorTable})\n`;
-  } else if (responseKind === "streamingBlob") {
+    out += `        try response.checkStatus(errorTypes: ${info.errorTable})\n`;
+  } else if (info.responseKind === "streamingBlob") {
     out += `        let stream = try await transport.stream(builder.build())\n`;
-    out += `        try await Self.ensureSuccess(stream, errorTypes: ${errorTable})\n`;
+    out += `        try await ${ensureSuccessRef}.ensureSuccess(stream, errorTypes: ${info.errorTable})\n`;
     out += `        return stream\n`;
-  } else if (responseKind === "eventStream") {
+  } else if (info.responseKind === "eventStream") {
     out += `        let stream = try await transport.stream(builder.build())\n`;
-    out += `        try await Self.ensureSuccess(stream, errorTypes: ${errorTable})\n`;
+    out += `        try await ${ensureSuccessRef}.ensureSuccess(stream, errorTypes: ${info.errorTable})\n`;
     out += `        let frames = stream.body.serverSentEvents()\n`;
-    out += `        return AsyncThrowingStream<${eventUnion}, any Error> { continuation in\n`;
+    out += `        return AsyncThrowingStream<${info.eventUnion}, any Error> { continuation in\n`;
     out += `            let task = Task {\n`;
     out += `                do {\n`;
     out += `                    for try await frame in frames {\n`;
     out += `                        guard let data = frame.data.data(using: .utf8) else { continue }\n`;
-    out += `                        continuation.yield(try JSONCoding.decoder.decode(${eventUnion}.self, from: data))\n`;
+    out += `                        continuation.yield(try JSONCoding.decoder.decode(${info.eventUnion}.self, from: data))\n`;
     out += `                    }\n`;
     out += `                    continuation.finish()\n`;
     out += `                } catch {\n`;
@@ -364,6 +430,113 @@ function emitOperation(program: any, httpOp: any, modifier: string): string {
   return out;
 }
 
+// Emits a protocol requirement: same signature as the concrete method, but
+// no defaults, no access modifier, no body.
+function emitProtocolRequirement(program: any, httpOp: any): string {
+  const info = computeOperationInfo(program, httpOp);
+  const params = formatParamList(info, false);
+  let out = docComment(info.doc, "    ");
+  out += paramDocLines(program, info.docParams, "    ");
+  out += `    func ${info.opName}(${params}) async throws${info.returnType}\n`;
+  return out;
+}
+
+// Prepends `extra` to every non-blank line of `text`. Used to re-indent an
+// already-formatted method body one level deeper when it's nested inside an
+// interface sub-client struct instead of the top-level client.
+function indentBlock(text: string, extra: string): string {
+  return text
+    .split("\n")
+    .map((line) => (line.length ? extra + line : line))
+    .join("\n");
+}
+
+interface InterfaceGroup {
+  displayName: string;
+  operations: any[];
+}
+
+// Walks `iface`'s enclosing namespaces upward (excluding `serviceNamespace`)
+// to build a collision-safe qualified name, e.g. `A.Items` -> `AItems`.
+function qualifiedInterfaceName(iface: any, serviceNamespace: any): string {
+  const segments: string[] = [iface.name];
+  let ns = iface.namespace;
+  while (ns && ns !== serviceNamespace && ns.name) {
+    segments.unshift(ns.name);
+    ns = ns.namespace;
+  }
+  return segments.join("");
+}
+
+// Groups `service.operations` by TypeSpec `interface` (object identity, not
+// name — two different namespaces can each define a same-named interface).
+// Operations not in any interface are returned separately as `flatOps` and
+// stay on the top-level client, unchanged from pre-grouping behavior.
+function computeInterfaceGroups(service: any): { flatOps: any[]; groups: InterfaceGroup[] } {
+  const flatOps: any[] = [];
+  const groupsByInterface = new Map<any, any[]>();
+
+  for (const httpOp of service.operations) {
+    const iface = httpOp.container?.kind === "Interface" ? httpOp.operation.interface : undefined;
+    if (iface) {
+      if (!groupsByInterface.has(iface)) groupsByInterface.set(iface, []);
+      groupsByInterface.get(iface)!.push(httpOp);
+    } else {
+      flatOps.push(httpOp);
+    }
+  }
+
+  const entries = [...groupsByInterface.entries()];
+  const nameCounts = new Map<string, number>();
+  for (const [iface] of entries) {
+    nameCounts.set(iface.name, (nameCounts.get(iface.name) ?? 0) + 1);
+  }
+
+  const groups: InterfaceGroup[] = entries.map(([iface, operations]) => {
+    const collides = (nameCounts.get(iface.name) ?? 0) > 1;
+    const displayName = collides ? qualifiedInterfaceName(iface, service.namespace) : iface.name;
+    return { displayName, operations };
+  });
+  groups.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  return { flatOps, groups };
+}
+
+function emitProtocol(program: any, group: InterfaceGroup, modifier: string): string {
+  let out = `${modifier} protocol ${group.displayName}API: Sendable {\n`;
+  const ops = [...group.operations].sort((a: any, b: any) => a.operation.name.localeCompare(b.operation.name));
+  for (const httpOp of ops) {
+    out += emitProtocolRequirement(program, httpOp);
+  }
+  out += `}\n`;
+  return out;
+}
+
+function emitNestedClient(
+  program: any,
+  group: InterfaceGroup,
+  modifier: string,
+  outerClientName: string,
+  generateProtocols: boolean
+): string {
+  const conformance = generateProtocols ? `: ${group.displayName}API, Sendable` : `: Sendable`;
+  let out = `    ${modifier} struct ${group.displayName}${conformance} {\n`;
+  out += `        private let baseURL: URL\n`;
+  out += `        private let transport: any HTTPTransport\n\n`;
+  out += `        init(baseURL: URL, transport: any HTTPTransport) {\n`;
+  out += `            self.baseURL = baseURL\n`;
+  out += `            self.transport = transport\n`;
+  out += `        }\n\n`;
+
+  const ops = [...group.operations].sort((a: any, b: any) => a.operation.name.localeCompare(b.operation.name));
+  for (const httpOp of ops) {
+    out += indentBlock(emitOperation(program, httpOp, modifier, outerClientName), "    ") + "\n";
+  }
+
+  out += `    }\n`;
+  return out;
+}
+
 export function generateClient(
   program: any,
   service: any,
@@ -371,22 +544,39 @@ export function generateClient(
 ): { filename: string; content: string } {
   const clientName = `${service.namespace.name}Client`;
   const modifier = options.accessModifier;
+  const { flatOps, groups } = computeInterfaceGroups(service);
+
   let out = `// Code generated by typespec-swift. DO NOT EDIT.\n\n`;
   out += `import Foundation\nimport HTTPRuntime\n\n`;
+
+  if (options.generateProtocols) {
+    for (const group of groups) {
+      out += emitProtocol(program, group, modifier) + "\n";
+    }
+  }
+
   out += `/// Generated client for ${service.namespace.name}. Depends only on HTTPRuntime.\n`;
   out += `${modifier} struct ${clientName}: Sendable {\n`;
+  for (const group of groups) {
+    out += `    ${modifier} let ${lowerFirst(group.displayName)}: ${group.displayName}\n`;
+  }
   out += `    private let baseURL: URL\n`;
   out += `    private let transport: any HTTPTransport\n\n`;
   out += `    ${modifier} init(baseURL: URL, transport: any HTTPTransport = URLSessionTransport()) {\n`;
   out += `        self.baseURL = baseURL\n`;
   out += `        self.transport = transport\n`;
+  for (const group of groups) {
+    out += `        self.${lowerFirst(group.displayName)} = ${group.displayName}(baseURL: baseURL, transport: transport)\n`;
+  }
   out += `    }\n\n`;
 
-  const operations = [...service.operations].sort((a: any, b: any) =>
-    a.operation.name.localeCompare(b.operation.name)
-  );
-  for (const httpOp of operations) {
+  const sortedFlatOps = [...flatOps].sort((a: any, b: any) => a.operation.name.localeCompare(b.operation.name));
+  for (const httpOp of sortedFlatOps) {
     out += emitOperation(program, httpOp, modifier) + "\n";
+  }
+
+  for (const group of groups) {
+    out += emitNestedClient(program, group, modifier, clientName, options.generateProtocols) + "\n";
   }
 
   out += `    private static func ensureSuccess(\n`;

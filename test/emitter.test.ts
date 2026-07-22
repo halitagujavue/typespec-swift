@@ -249,6 +249,60 @@ describe("multipart fixture", () => {
   }, 120_000);
 });
 
+describe("interfaces fixture", () => {
+  it("groups operations by interface into nested sub-clients with protocols, and builds", async () => {
+    const outputDir = await compileFixture("interfaces");
+    const client = readFileSync(join(outputDir, "ShopServiceClient.swift"), "utf8");
+
+    // Protocols.
+    expect(client).toContain("public protocol UsersAPI: Sendable {");
+    expect(client).toContain("public protocol OrdersAPI: Sendable {");
+    expect(client).toContain("public protocol AItemsAPI: Sendable {");
+    expect(client).toContain("public protocol BItemsAPI: Sendable {");
+    // Protocol requirements have no modifier, no body, no defaults.
+    expect(client).toContain("    func list() async throws -> [Item]\n");
+
+    // Top-level client: sub-client properties + instantiation in init.
+    expect(client).toContain("public struct ShopServiceClient: Sendable {");
+    expect(client).toContain("public let aItems: AItems");
+    expect(client).toContain("public let bItems: BItems");
+    expect(client).toContain("public let orders: Orders");
+    expect(client).toContain("public let users: Users");
+    expect(client).toContain("self.users = Users(baseURL: baseURL, transport: transport)");
+    expect(client).toContain("self.orders = Orders(baseURL: baseURL, transport: transport)");
+    expect(client).toContain("self.aItems = AItems(baseURL: baseURL, transport: transport)");
+    expect(client).toContain("self.bItems = BItems(baseURL: baseURL, transport: transport)");
+
+    // Bare operation stays flat on the top-level client.
+    expect(client).toContain("public func health() async throws {");
+
+    // Nested structs conform to their protocol and re-declare list().
+    expect(client).toContain("public struct Users: UsersAPI, Sendable {");
+    expect(client).toContain("public struct Orders: OrdersAPI, Sendable {");
+    expect(client).toContain("public struct AItems: AItemsAPI, Sendable {");
+    expect(client).toContain("public struct BItems: BItemsAPI, Sendable {");
+    // Both nested structs' `list()` methods coexist without collision
+    // (this is the bug fix — previously this produced two identical
+    // `func list()` declarations directly on one struct).
+    const listMatches = client.match(/public func list\(\) async throws -> \[Item\] \{/g);
+    expect(listMatches?.length).toBe(4); // Users, Orders, AItems, BItems
+
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+
+  it("omits protocols but keeps nested structs when generateProtocols is false", async () => {
+    const outputDir = await compileFixture("interfaces", { generateProtocols: false });
+    const client = readFileSync(join(outputDir, "ShopServiceClient.swift"), "utf8");
+    expect(client).not.toContain("protocol UsersAPI");
+    expect(client).not.toContain("protocol OrdersAPI");
+    expect(client).toContain("public struct Users: Sendable {");
+    expect(client).toContain("public struct Orders: Sendable {");
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+});
+
 describe("keywords fixture", () => {
   it("escapes reserved Swift keyword members and uses dual-name init params, and builds", async () => {
     const outputDir = await compileFixture("keywords");
