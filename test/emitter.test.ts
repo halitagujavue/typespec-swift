@@ -89,6 +89,18 @@ describe("streaming fixture", () => {
   }, 120_000);
 });
 
+describe("greedy-path fixture", () => {
+  it("emits PathEncoding.greedy for {path+} segments and builds", async () => {
+    const outputDir = await compileFixture("greedy-path");
+    const client = readFileSync(join(outputDir, "GreedyPathServiceClient.swift"), "utf8");
+    expect(client).toContain(
+      'path: "/storage/\\(PathEncoding.segment(bucket))/\\(PathEncoding.greedy(path))"'
+    );
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
+});
+
 describe("maps-arrays fixture", () => {
   it("maps Array<T>, Record<string,V>, and optional properties, and builds", async () => {
     const outputDir = await compileFixture("maps-arrays");
