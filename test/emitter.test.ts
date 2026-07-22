@@ -150,6 +150,18 @@ describe("maps-arrays fixture", () => {
     const { stdout } = buildGeneratedSwift(outputDir);
     expect(stdout).toBeDefined();
   }, 120_000);
+
+  it("converts an enum-typed query/header param to its .rawValue, and builds", async () => {
+    const outputDir = await compileFixture("maps-arrays");
+    const client = readFileSync(join(outputDir, "MapsArraysServiceClient.swift"), "utf8");
+    expect(client).toContain(
+      "public func listItems(status: ItemStatus? = nil, xStatus: ItemStatus? = nil) async throws -> [Item] {"
+    );
+    expect(client).toContain('builder.addQuery("status", status?.rawValue)');
+    expect(client).toContain('builder.setHeader("x-status", xStatus?.rawValue)');
+    const { stdout } = buildGeneratedSwift(outputDir);
+    expect(stdout).toBeDefined();
+  }, 120_000);
 });
 
 describe("keywords fixture", () => {

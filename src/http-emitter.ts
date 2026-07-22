@@ -13,6 +13,7 @@ interface ParamInfo {
   swiftType: string;
   required: boolean;
   greedy?: boolean;
+  isEnum?: boolean;
 }
 
 function pathExpr(uri: string, labels: ParamInfo[]): string {
@@ -25,16 +26,22 @@ function pathExpr(uri: string, labels: ParamInfo[]): string {
   return `"${expr}"`;
 }
 
-function queryValueExpr(p: ParamInfo): string {
+// Converts a query or header parameter's Swift value into the `String` (or
+// `[String]`, for array query params) that HTTPRequestBuilder's addQuery/
+// setHeader overloads require. Used for both query and header params since
+// both bindings require the same conversion.
+function stringValueExpr(p: ParamInfo): string {
   const name = escapeIdentifier(p.name);
   if (p.swiftType.endsWith("]")) return name; // array query params pass through
+  if (p.isEnum) {
+    return p.required ? `${name}.rawValue` : `${name}?.rawValue`;
+  }
   switch (p.swiftType) {
     case "String":
       return name;
     case "Date":
       return p.required ? `JSONCoding.iso8601String(${name})` : `${name}.map(JSONCoding.iso8601String)`;
     default:
-      // Enum refs use .rawValue; everything else uses String(...).
       return p.required ? `String(${name})` : `${name}.map(String.init)`;
   }
 }
@@ -67,6 +74,7 @@ function emitOperation(program: any, httpOp: any, modifier: string): string {
       swiftType: swiftTypeForType(p.param.type, program),
       required: !p.param.optional,
       greedy: !!p.allowReserved,
+      isEnum: p.param.type?.kind === "Enum",
     };
     if (p.type === "path") labels.push(info);
     else if (p.type === "query") queries.push(info);
@@ -148,10 +156,10 @@ function emitOperation(program: any, httpOp: any, modifier: string): string {
   out += `    ${modifier} func ${opName}(${params.join(", ")}) async throws${returnType} {\n`;
   out += `        ${mutatesBuilder ? "var" : "let"} builder = HTTPRequestBuilder(method: .${method}, baseURL: baseURL, path: ${pathExpr(httpOp.path, labels)})\n`;
   for (const q of queries) {
-    out += `        builder.addQuery(${JSON.stringify(q.wireName)}, ${queryValueExpr(q)})\n`;
+    out += `        builder.addQuery(${JSON.stringify(q.wireName)}, ${stringValueExpr(q)})\n`;
   }
   for (const h of headers) {
-    out += `        builder.setHeader(${JSON.stringify(h.wireName)}, ${escapeIdentifier(h.name)})\n`;
+    out += `        builder.setHeader(${JSON.stringify(h.wireName)}, ${stringValueExpr(h)})\n`;
   }
   if (requestBodyKind === "json" && payload) {
     if (payload.required) {
